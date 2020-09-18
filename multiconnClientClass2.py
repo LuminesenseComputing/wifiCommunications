@@ -7,7 +7,7 @@ import types
 import time
 
 #chris made change
-
+#chris made change2
 '''
 ASSUMPTIONS
 -DONE: the wifiCommunicator will only be initialized once for each power on of the pi0. Thus, the lightModuleClients should
