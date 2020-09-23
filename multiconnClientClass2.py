@@ -210,7 +210,7 @@ class wifiCommunicator():
                     lightModule.connect()
 
                 #piui name change commands#ADD IN FOR GET NAME COMMAND DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
-                if (recv_data[0:7] == b"CHANGEN"):#full command is CHANGENAME_newName
+                if (isinstance(recv_data, bytes) and len(recv_data)>7 and recv_data[0:7] == b"CHANGEN"):#full command is CHANGENAME_newName
                     lightModule.changeWifiName(recv_data[11:])#set the name of the light to the name in the wifi message
                 if (recv_data==b'CONFIRMCHANGENAME'):#full command is CONFIRMCHANGENAME
                     if lightModule.confirmNameChange(recv_data[17:]) == False:#check whether the light name has been changed

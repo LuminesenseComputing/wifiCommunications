@@ -151,7 +151,7 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
                 elif lightModule.state == "TURNING ON":
                     lightModule.outOfSyncStateChange("OFF")
                 receiveQueuey.put(str(port) + ":" + "OFF")
-            elif recv_data[0:15] == b"STATENOTCHANGED":
+            elif isinstance(recv_data, bytes) and len(recv_data) > 14 and recv_data[0:15] == b"STATENOTCHANGED":
                 #if the current light responded saying it has not yet changed state, confirm status again
                 data.messages += [b"CONFIRM STATE"]
                 lightModule.confirmStateChange()
