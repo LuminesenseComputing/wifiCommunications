@@ -108,9 +108,9 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
         lightModule.changeState()
     elif piuiRequest == "GETSTATE_COMMAND" and messagePort == int(port): #if the queue is asking what the current port light module's state is
         data.messages += [b"GET STATE"]
-    elif piuiRequest[0:11] == "CHANGENAME_" and messagePort == int(port): #if the queue is asking to change the name of the current light module
+    elif isinstance(piuiRequest,str) and len(piuiRequest) > 11 and piuiRequest[0:11] == "CHANGENAME_" and messagePort == int(port): #if the queue is asking to change the name of the current light module
         data.messages += [b"CHANGENAME_"+bytes(piuiRequest[11:],'utf-8')]
-    elif piuiRequest == "GETNAME":#if the queue is asking what the current light module's name is
+    elif piuiRequest == "GETNAME" and messagePort == int(port):#if the queue is asking what the current light module's name is
         data.messages += [b"GETNAME"]
 
     #check if any messages have been received from the light module
@@ -165,11 +165,11 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
                 receiveQueuey.put(str(port) + ":" + "STATEIS_OFF")#send message to piui to tell it light is off
 
             #if the pi0 responds to the GET NAME command
-            if recv_data[0:7] == b"NAMEIS_":
+            if isinstance(recv_data, bytes) and len(recv_data) > 7 and  recv_data[0:7] == b"NAMEIS_":
                 receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the light is on
 
             #if the pi0 responds to the CHANGENAME_ command and CONFIRMCHANGENAME command
-            if recv_data[0:12] == b"NAMECHANGED_":
+            if isinstance(recv_data, bytes) and len(recv_data)>12 and recv_data[0:12] == b"NAMECHANGED_":
                 receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the name is changed along with the new name after the underscore
             elif recv_data == b"NAMENOTCHANGED":#if the name has not yet been changed on the pi0, then ask again
                 data.messages += ["CONFIRMCHANGENAME"]
