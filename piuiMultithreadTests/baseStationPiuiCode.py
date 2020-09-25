@@ -25,7 +25,7 @@ class lightModulePiUiInfo:
         self.port = port
         self.displayTime = 0
         self.state = "UNKNOWN" #can be ON, OFF, TURNING_ON, TURNING_OFF, UNKNOWN if using the toggle system; can be ON, OFF, CHANGING_STATE, UNKNOWN if using the button light control system
-        self.name = "deskLight" #an example of a light name
+        self.name = "UNKNOWN" #an example of a light name
 
 class DemoPiUi(object):
 
@@ -39,7 +39,9 @@ class DemoPiUi(object):
         self.receiveQueuey = receiveQueuey
         self.piuiLightDict = {}#this dict will store the active lights' lightModulePiUiInfo; keys are the port numbers
         self.currentPage = None
-        #self.titles = {} #this is a dictionary that is used by the toggle page to remember the title for each light; keys are the port numbers
+        self.titles = {} #this is a dictionary that is used by the toggle page to remember the title for each light; keys are the port numbers
+        self.nameInputs = {} #this is a dictionary that is used by the toggle page to remember the name textbox for each light; keys are port numbers
+
 
     def page_static(self):
         self.page = self.ui.new_ui_page(title="Static Content", prev_text="Back",
@@ -81,8 +83,11 @@ class DemoPiUi(object):
         self.page = self.ui.new_ui_page(title="Light Control", prev_text="Back", onprevclick=self.main_menu)
         self.list = self.page.add_list()
         self.titles = {} # A dictionary that stores the textboxes on the page
+        self.nameInputs = {}
         for port in self.piuiLightDict:
-            self.titles[port] = self.page.add_textbox("Light "+str(port)+" "+self.piuiLightDict[port].state, "h2")
+            self.titles[port] = self.page.add_textbox("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+" Status: " + self.piuiLightDict[port].state, "h2")
+            self.nameInputs[port] = self.page.add_input("text", "Change Nickname")
+            self.page.add_button("Save Nickname", functools.partial(self.onLightNameType, port))  
             self.page.add_button("Change State", functools.partial(self.onLightControlClick, port))
 
         while True:
@@ -96,8 +101,11 @@ class DemoPiUi(object):
         if signal == "CONNECTED":
             self.piuiLightDict[port] = lightModulePiUiInfo(port)#add a new light module to the piui light dictionary
             self.lightCommandEvent(str(port)+":"+"GETSTATE_COMMAND")#get the current state of the light the just connected
+            self.lightCommandEvent(str(port)+":"+"GETNAME")#get the current state of the light the just connected
             if self.currentPage == "page_lightController":
-                self.titles[port] = self.page.add_textbox("Light "+str(port)+" "+self.piuiLightDict[port].state, "h2")
+                self.titles[port] = self.page.add_textbox("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+" Status: " + self.piuiLightDict[port].state, "h2")
+                self.nameInputs[port] = self.page.add_input("text", "Change Nickname")
+                self.page.add_button("Save Nickname", functools.partial(self.onLightNameType, port)) 
                 self.page.add_button("Change State", functools.partial(self.onLightControlClick, port))
         elif signal == "ON" or signal=="CON_ON":
             self.piuiLightDict[port].state = "ON"
@@ -119,8 +127,14 @@ class DemoPiUi(object):
             self.piuiLightDict[port].state = "OFF"
             if self.currentPage == "page_lightController":
                 self.changeLightText(port)
-
-
+        elif isinstance(signal,str) and len(signal) > 6 and signal[0:7] == "NAMEIS_":#this is a reply to the request to get the current name of the light
+            self.piuiLightDict[port].name = signal[7:]
+            if self.currentPage == "page_lightController":
+                self.changeLightText(port)
+        elif isinstance(signal,str) and len(signal) > 11 and signal[0:12] == "NAMECHANGED_":
+            self.piuiLightDict[port].name = signal[12:]
+            if self.currentPage == "page_lightController":
+                self.changeLightText(port)
 
     '''
     def page_console(self):
@@ -178,10 +192,16 @@ class DemoPiUi(object):
         self.lightCommandEvent(str(port)+":"+value)
         self.changeLightText(port)
 
+    def onLightNameType(self, port):
+        newName = self.nameInputs[port].get_text()
+        value = "CHANGENAME_" + newName
+        self.piuiLightDict[port].name = "name_changing"
+        self.lightCommandEvent(str(port)+":"+value)
+        self.changeLightText(port)
 
     def changeLightText(self, port):
         #index = self.indices[str(port)]
-        self.titles[port].set_text("Light "+str(port)+" " + self.piuiLightDict[port].state)
+        self.titles[port].set_text("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+" Status: " + self.piuiLightDict[port].state)
 
 #AN EXAMPLE OF A POTENTIAL FUNCTION THAT COULD BE USED FOR
 #SENDING WIFI MESSAGES FROM PIUI################
