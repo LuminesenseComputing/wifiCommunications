@@ -31,7 +31,9 @@ class lightModule:#CLASS THAT KEEPS TRACK OF THE STATUS OF A LIGHT AT A CERTAIN 
         #I SHOULD BE STARTING THIS IN AN UNKNOWN STATE, AND THEN MAKE THE REST OF THE FUNCTIONS WORK OK WITH THIS UNKNOWN STATE... IE TURN THE LIGHT ON IF THE FINALIZEsTATEcHANGE FUNCITON IS CALLED
         self.state = "OFF" #can be "OFF", "ON", "TURNING OFF", "TURNING ON"
         self.port = port#MUST FIX SO THAT IT STARTS AT THE CORRECT STATE
+        self.nameChanging = False
         self.changeTime = 0
+        self.nameChangeTime = 0
         print("    Light ", self.port, " is now ONLINE.")
 
    #EDGE CASES TO FIX:
@@ -64,6 +66,9 @@ class lightModule:#CLASS THAT KEEPS TRACK OF THE STATUS OF A LIGHT AT A CERTAIN 
         elif self.state == "TURNING OFF":
             print("    Light ", self.port, "turning off confirmation requested.")
 
+    def confirmNameChange(self):#if no reply was received from the module for the original name change command, then try sending command again
+        self.nameChangeTime = time.time()#reset the time at which the state change was last attempted
+        
     def finalizeStateChange(self):
         if self.state == "TURNING ON":
             #self.state = 1
@@ -110,6 +115,7 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
         data.messages += [b"GET STATE"]
     elif isinstance(piuiRequest,str) and len(piuiRequest) > 11 and piuiRequest[0:11] == "CHANGENAME_" and messagePort == int(port): #if the queue is asking to change the name of the current light module
         data.messages += [b"CHANGENAME_"+bytes(piuiRequest[11:],'utf-8')]
+        lightModule.nameChanging = True
     elif piuiRequest == "GETNAME" and messagePort == int(port):#if the queue is asking what the current light module's name is
         data.messages += [b"GETNAME"]
 
@@ -171,6 +177,7 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
             #if the pi0 responds to the CHANGENAME_ command and CONFIRMCHANGENAME command
             if isinstance(recv_data, bytes) and len(recv_data)>12 and recv_data[0:12] == b"NAMECHANGED_":
                 receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the name is changed along with the new name after the underscore
+                lightModule.nameChanging = False
             elif recv_data == b"NAMENOTCHANGED":#if the name has not yet been changed on the pi0, then ask again
                 data.messages += ["CONFIRMCHANGENAME"]
 
@@ -192,6 +199,10 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
         elif lightModule.state == "TURNING OFF" and (time.time() - lightModule.changeTime) > 2:
             data.messages += [b"CONFIRM STATE"]
             lightModule.confirmStateChange()
+    if not data.messages: #must check to make sure the name was not just changed
+        if lightModule.nameChanging == True and (time.time() - lightModule.nameChangeTime) > 2:
+            data.messages += [b"CONFIRMNAMECHANGE"]
+            lightModule.confirmNameChange()#this resets nameChangeTime variable to the current time as the last time the confirmnamechange command was asked
 
     #send any waiting messages to the light module
     if mask & selectors.EVENT_WRITE:

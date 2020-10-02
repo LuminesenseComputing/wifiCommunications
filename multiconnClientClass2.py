@@ -6,6 +6,7 @@ import socket
 import selectors
 import types
 import time
+import copy
 
 #chris made change
 #chris made change2
@@ -113,14 +114,15 @@ class lightModuleClient:
 
 
 class wifiCommunicator():
-    #initialStateList is in the format [[actualState, actualName, actualCurrentTime], ... repeated for each light]
+    #initialStateList is in the format [actualState, actualName, actualCurrentTime]
     def __init__(self, selector, initialStateList):
         self.sel = selector
         self.lightModuleDict = {}
-        self.num_conns = len(initialStateList)
+        initialStateList = [copy.copy(initialStateList)]#the program used to take more than one light per light module, and hence used to be a list of lists
+        self.num_conns = len(initialStateList) 
         self.host = "192.168.4.1"
         self.port = int("50007")
-        self.start_connections(initialStateList)
+        self.start_connections([initialStateList])
 
     #attempt to start the wifi connections and create lightModuleClient objects in the lightModuleDict for each light
     def start_connections(self, initialStateList):
@@ -258,6 +260,7 @@ class wifiCommunicator():
             -"CONNECTED"/"NOTYETCONNECTED"/"DISCONNECTED"
             -"ON"/"OFF"
             -nameOfLight
+            -resetTimer: a boolean variable that is True for one checkwifi cycle after the resetTimer button on the piui is pressed, False otherwise
         where nameOfLight is the name which the wifi is requesting that the lightModuleBeNamed
 
     Note that we have not dealt with the edge case of the piui disconnecting... ie ["DISCONNECTED", "ON"]
@@ -279,7 +282,7 @@ class wifiCommunicator():
         if 1 not in self.lightModuleDict:
             return None
         lightModule = self.lightModuleDict[1]
-        return [lightModule.connectionStatus, lightModule.wifiState, lightModule.wifiName]
+        return [lightModule.connectionStatus, lightModule.wifiState, lightModule.wifiName, False]
 
     
     '''
@@ -287,14 +290,16 @@ class wifiCommunicator():
 
     The wifi's response to this has not yet been implemented.
 
-    Input argument: Can be one of ["ON", nameOfLight, currentTime, triggeredOFF]
+    Input parameters:
+        -stateInput: "ON"/"OFF"
+        -nameInput (string)
+        -currentTime
+        -context ("IDLE"/"MOTION"/"TIMER"/"ON")
     where nameOfLight is the name of the light, currentTime is the currentTime the light has been on for, and 
     triggeredOFF is boolean whether the motion sensor has been triggered
     '''
-    def confirmState(self, actualLightState):#REMAKE THIS FUNCTION BASED ON THE NEW LIGHTMODULE MODIFICATIONS
+    def confirmState(self, stateInput, nameInput, currentTime, context):#REMAKE THIS FUNCTION BASED ON THE NEW LIGHTMODULE MODIFICATIONS
         #something along the lines of self.actualLightState = actualLightState
-        stateInput = actualLightState[0]
-        nameInput = actualLightState[1]
         if 1 not in self.lightModuleDict:#check if the light modules have been initialized yet
             return None
         else:
