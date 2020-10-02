@@ -122,7 +122,7 @@ class wifiCommunicator():
         self.num_conns = len(initialStateList) 
         self.host = "192.168.4.1"
         self.port = int("50007")
-        self.start_connections([initialStateList])
+        self.start_connections(initialStateList)
 
     #attempt to start the wifi connections and create lightModuleClient objects in the lightModuleDict for each light
     def start_connections(self, initialStateList):
@@ -213,12 +213,16 @@ class wifiCommunicator():
 
                 #piui name change commands#ADD IN FOR GET NAME COMMAND DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
                 if (isinstance(recv_data, bytes) and len(recv_data)>7 and recv_data[0:7] == b"CHANGEN"):#full command is CHANGENAME_newName
-                    lightModule.changeWifiName(recv_data[11:])#set the name of the light to the name in the wifi message
-                if (recv_data==b'CONFIRMCHANGENAME'):#full command is CONFIRMCHANGENAME
+                    lightModule.changeWifiName(recv_data[11:].decode('utf-8'))#set the name of the light to the name in the wifi message
+                if (recv_data==b'CONFIRMNAMECHANGE'):#full command is CONFIRMCHANGENAME
                     if lightModule.confirmNameChange(recv_data[17:]) == False:#check whether the light name has been changed
                         data.messages += [b"NAMENOTCHANGED"]#confirm that the name has not been changed with the response NAMENOTCHANGED
                     else:
                         data.messages += [b"NAMECHANGED_"+bytes(lightModule.actualName,'utf-8')]#confirm that the name has been changed woth the response NAMECHANGED_newName
+                #if the piui asks what name the light currently has
+                if (recv_data == b"GETNAME"):
+                    data.messages += [b"NAMEIS_"+bytes(lightModule.actualName,'utf-8')]
+            
             if not recv_data: #or data.recv_total == data.msg_total: #if it gets disconnected from the base station
                 print("closing socket", data.connid)
                 self.sel.unregister(sock)
