@@ -68,7 +68,7 @@ class lightModule:#CLASS THAT KEEPS TRACK OF THE STATUS OF A LIGHT AT A CERTAIN 
 
     def confirmNameChange(self):#if no reply was received from the module for the original name change command, then try sending command again
         self.nameChangeTime = time.time()#reset the time at which the state change was last attempted
-        
+
     def finalizeStateChange(self):
         if self.state == "TURNING ON":
             #self.state = 1
@@ -209,7 +209,7 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
         if not data.outb and data.messages:
             data.outb = data.messages.pop()
         if data.outb:
-            print("Sending", repr(data.outb), "to", data.addr)
+            print("+=+=+=+=+=+=+=+=+ Sending", repr(data.outb), "to", data.addr)
             sent = sock.send(data.outb)  # Should be ready to write
             data.outb = data.outb[sent:]
 ################################
