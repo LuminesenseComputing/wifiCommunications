@@ -107,79 +107,82 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
     sock = key.fileobj
     data = key.data
     port = data.addr[1]
+    #Note that the semicolon acts as a delimeter between messages
     lightModule = lightModuleDict[port]#the port of the currently serviced light module is data.addr[1]
     if piuiRequest == "CHANGESTATE_COMMAND" and messagePort == int(port): #if a state change has been requested for the current port light module by the queue
-        data.messages  += [b"CHANGE STATE"]
+        data.messages  += [b";CHANGE STATE"]
         lightModule.changeState()
     elif piuiRequest == "GETSTATE_COMMAND" and messagePort == int(port): #if the queue is asking what the current port light module's state is
-        data.messages += [b"GET STATE"]
+        data.messages += [b";GET STATE"]
     elif isinstance(piuiRequest,str) and len(piuiRequest) > 11 and piuiRequest[0:11] == "CHANGENAME_" and messagePort == int(port): #if the queue is asking to change the name of the current light module
-        data.messages += [b"CHANGENAME_"+bytes(piuiRequest[11:],'utf-8')]
+        data.messages += [b";CHANGENAME_"+bytes(piuiRequest[11:],'utf-8')]
         lightModule.nameChanging = True
     elif piuiRequest == "GETNAME" and messagePort == int(port):#if the queue is asking what the current light module's name is
-        data.messages += [b"GETNAME"]
+        data.messages += [b";GETNAME"]
 
     #check if any messages have been received from the light module
     if mask & selectors.EVENT_READ:
         try:
-            recv_data = sock.recv(1024)  # Should be ready to read
+            #split the incoming messages based on the semicolon delimiter and put them into a list
+            recv_data_list = sock.recv(1024).split(b";")  # Should be ready to read
         except:
-            recv_data = False#if read failed then close light
-        if recv_data:
-            print("received",repr(recv_data), "from", data.addr)
-           #IT WOULD ACTUALLY STILL BE GOOD TO HAVE AN IMMEDIATE CHECK OF CONFIRM STATE RIGHT AFTER THE LIGHT HAS BEEN CHANGED
-            '''
-            if recv_data == b"TURNED ON":#confirmation that the light has turned on/off
-                lightModule.finalizeChangeState()
-                receiveQueuey.put(str(port) + ":" + "ON")
-                #data.outb += recv_data
-            elif recv_data == b"TURNED OFF":
-                lightModule.finalizeChangeState()
-                receiveQueuey.put(str(port) + ":" + "OFF")
-            if recv_data == b"CONFIRMED ON":#confirmation that the light has turned on/off after a delayed response
-                lightModule.finalizeChangeState()
-                receiveQueuey.put(str(port) + ":" + "CON_ON")
-            elif recv_data == b"CONFIRMED OFF":
-                lightModule.finalizeChangeState()
-                receiveQueuey.put(str(port) + ":" + "CON_OFF")
-            '''
+            recv_data_list = False#if read failed then close light
+        if recv_data_list:#if the recv_data_list is not false; ie if the reading over incoming messages worked
+            for recv_data in recv_data_list:#for each incoming message separated by ";"
+                print("received",repr(recv_data), "from", data.addr)
+               #IT WOULD ACTUALLY STILL BE GOOD TO HAVE AN IMMEDIATE CHECK OF CONFIRM STATE RIGHT AFTER THE LIGHT HAS BEEN CHANGED
+                '''
+                if recv_data == b"TURNED ON":#confirmation that the light has turned on/off
+                    lightModule.finalizeChangeState()
+                    receiveQueuey.put(str(port) + ":" + "ON")
+                    #data.outb += recv_data
+                elif recv_data == b"TURNED OFF":
+                    lightModule.finalizeChangeState()
+                    receiveQueuey.put(str(port) + ":" + "OFF")
+                if recv_data == b"CONFIRMED ON":#confirmation that the light has turned on/off after a delayed response
+                    lightModule.finalizeChangeState()
+                    receiveQueuey.put(str(port) + ":" + "CON_ON")
+                elif recv_data == b"CONFIRMED OFF":
+                    lightModule.finalizeChangeState()
+                    receiveQueuey.put(str(port) + ":" + "CON_OFF")
+                '''
 
-            #if the pi0 responds to the CHANGE STATE command and CONFIRM STATE command
-            if recv_data == b"STATECHANGED_ON":
-                if lightModule.state == "TURNING ON":#if the piui thinks that the light is actually supposed to be turning on
-                    lightModule.finalizeStateChange()#FINISH ADDING ALL THE POSSIBILITIES HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
-                elif lightModule.state == "TURNING OFF":
-                    lightModule.outOfSyncStateChange("ON")
-                receiveQueuey.put(str(port) + ":" + "ON")
-            elif recv_data == b"STATECHANGED_OFF":
-                if lightModule.state == "TURNING OFF":#if the piui thinks that the light is actually supposed to be turning off
-                    lightModule.finalizeStateChange()#FINISH ADDING ALL THE POSSIBILITIES HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
-                elif lightModule.state == "TURNING ON":
-                    lightModule.outOfSyncStateChange("OFF")
-                receiveQueuey.put(str(port) + ":" + "OFF")
-            elif isinstance(recv_data, bytes) and len(recv_data) > 14 and recv_data[0:15] == b"STATENOTCHANGED":
-                #if the current light responded saying it has not yet changed state, confirm status again
-                data.messages += [b"CONFIRM STATE"]
-                lightModule.confirmStateChange()
+                #if the pi0 responds to the CHANGE STATE command and CONFIRM STATE command
+                if recv_data == b"STATECHANGED_ON":
+                    if lightModule.state == "TURNING ON":#if the piui thinks that the light is actually supposed to be turning on
+                        lightModule.finalizeStateChange()#change the satus of the light module to ON
+                    elif lightModule.state == "TURNING OFF":
+                        lightModule.outOfSyncStateChange("ON")
+                    receiveQueuey.put(str(port) + ":" + "ON")
+                elif recv_data == b"STATECHANGED_OFF":
+                    if lightModule.state == "TURNING OFF":#if the piui thinks that the light is actually supposed to be turning off
+                        lightModule.finalizeStateChange()
+                    elif lightModule.state == "TURNING ON":
+                        lightModule.outOfSyncStateChange("OFF")
+                    receiveQueuey.put(str(port) + ":" + "OFF")
+                elif isinstance(recv_data, bytes) and len(recv_data) > 14 and recv_data[0:15] == b"STATENOTCHANGED":
+                    #if the current light responded saying it has not yet changed state, confirm status again
+                    data.messages += [b";CONFIRM STATE"]
+                    lightModule.confirmStateChange()
 
-            #if the pi0 responds to the GET STATE command
-            if recv_data == b"STATEIS_ON": 
-                lightModule.outOfSyncStateChange("ON")#force the light module object into the current actual state of the light
-                receiveQueuey.put(str(port) + ":" + "STATEIS_ON")#send message to the piui to tell it the light is on
-            elif recv_data == b"STATEIS_OFF":
-                lightModule.outOfSyncStateChange("OFF")#force the light module object into the current actual state of the light
-                receiveQueuey.put(str(port) + ":" + "STATEIS_OFF")#send message to piui to tell it light is off
+                #if the pi0 responds to the GET STATE command
+                if recv_data == b"STATEIS_ON":
+                    lightModule.outOfSyncStateChange("ON")#force the light module object into the current actual state of the light
+                    receiveQueuey.put(str(port) + ":" + "STATEIS_ON")#send message to the piui to tell it the light is on
+                elif recv_data == b"STATEIS_OFF":
+                    lightModule.outOfSyncStateChange("OFF")#force the light module object into the current actual state of the light
+                    receiveQueuey.put(str(port) + ":" + "STATEIS_OFF")#send message to piui to tell it light is off
 
-            #if the pi0 responds to the GET NAME command
-            if isinstance(recv_data, bytes) and len(recv_data) > 7 and  recv_data[0:7] == b"NAMEIS_":
-                receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the light is on
+                #if the pi0 responds to the GET NAME command
+                if isinstance(recv_data, bytes) and len(recv_data) > 7 and  recv_data[0:7] == b"NAMEIS_":
+                    receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the light is on
 
-            #if the pi0 responds to the CHANGENAME_ command and CONFIRMCHANGENAME command
-            if isinstance(recv_data, bytes) and len(recv_data)>12 and recv_data[0:12] == b"NAMECHANGED_":
-                receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the name is changed along with the new name after the underscore
-                lightModule.nameChanging = False
-            elif recv_data == b"NAMENOTCHANGED":#if the name has not yet been changed on the pi0, then ask again
-                data.messages += ["CONFIRMCHANGENAME"]
+                #if the pi0 responds to the CHANGENAME_ command and CONFIRMCHANGENAME command
+                if isinstance(recv_data, bytes) and len(recv_data)>12 and recv_data[0:12] == b"NAMECHANGED_":
+                    receiveQueuey.put(str(port) + ":" + recv_data.decode('utf-8'))#send message to the piui to tell it the name is changed along with the new name after the underscore
+                    lightModule.nameChanging = False
+                elif recv_data == b"NAMENOTCHANGED":#if the name has not yet been changed on the pi0, then ask again
+                    data.messages += [";CONFIRMCHANGENAME"]
 
 ##################################GOOD TO DO:::make the GET STATE, GET NAME, and CHANGENAME_ commands reattempt if no response is heard quickly
 
@@ -194,14 +197,14 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
     #if the current light has passed 2 seconds since attempting to turn on/off without response, confirm status
     if not data.messages: #must check to make sure the light was not just turned on or off
         if lightModule.state == "TURNING ON" and (time.time() - lightModule.changeTime) > 2:
-            data.messages += [b"CONFIRM STATE"]
+            data.messages += [b";CONFIRM STATE"]
             lightModule.confirmStateChange()
         elif lightModule.state == "TURNING OFF" and (time.time() - lightModule.changeTime) > 2:
-            data.messages += [b"CONFIRM STATE"]
+            data.messages += [b";CONFIRM STATE"]
             lightModule.confirmStateChange()
     if not data.messages: #must check to make sure the name was not just changed
         if lightModule.nameChanging == True and (time.time() - lightModule.nameChangeTime) > 2:
-            data.messages += [b"CONFIRMNAMECHANGE"]
+            data.messages += [b";CONFIRMNAMECHANGE"]
             lightModule.confirmNameChange()#this resets nameChangeTime variable to the current time as the last time the confirmnamechange command was asked
 
     #send any waiting messages to the light module
