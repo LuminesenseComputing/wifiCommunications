@@ -57,16 +57,31 @@ class lightModuleClient:
         self.wifiState = None #"OFF" is off, "ON" is on, None is disconnected from base station
         self.actualState = actualState #the actual current state of the light, "OFF" or "ON"
         self.connectionStatus = "NOTYETCONNECTED" #whether connected to base station; can be "NOTYETCONNECTED", "CONNECTED", or "DISCONNECTED"
+        self.lightTriggeredOff = "NO"#whether the light has been triggered to turn off, either: "NO", "MOTION" (motion sensor triggered), or "TIMER" (timer ran out)
+        #the above variable should go back to "NO" as soon as the message has been sent to the base station that the light is triggered off
+        self.motionHappening = False #whether there is motion currently
+        self.triggerMessageSent = False #whether a message has been sent to the base station to inform it that the light module ahs been triggered off
 
         self.connid = connid #the ID number of the light
         
         self.wifiName = None #the name of the light module as recommended by the wifi; None if the wifi is disconnected or has not yet tried to change the name
         self.actualName = actualName #the current actual currently stored name of the light module
         self.actualCurrentTime = actualCurrentTime #the time the light has been on for
-        
+
         self.lastConnectionAttemptTime = 0#The time of the last attempt to connect to the base station
 
         print("    Light ", self.connid, " is NOT YET CONNECTED.")
+
+    #the light gets triggered to be off with cause as either "MOTION" or "TIMER"
+    def triggerLightOff(self, cause):
+        if cause == "MOTION":
+            self.lightTriggeredOff = "MOTION"
+            self.motionHappening = True
+            print("    Light ", self.connid, " off due to motion sensor.")
+        elif cause == "TIMER":
+            self.lightTriggeredOff = "TIMER"
+            print("    Light ", self.connid, " off due to timer running out.")
+        self.triggerMessageSent = False #we have not yet informed the base station that the trigger has occurred
 
     def connect(self):#light becoming connected to a base station
         self.connectionStatus = "CONNECTED"
@@ -168,62 +183,86 @@ class wifiCommunicator():
         data = key.data
         lightModule = self.lightModuleDict[data.connid]
         
-        #in addition to the "if not recv_data", might need an try except statement for when the base station disconnects from the piui...
-        
+        #if the light status changes we must inform the base station, as long as we have not already sent this trigger message
+        if lightModule.lightTriggeredOff == "MOTION" and lightModule.triggerMessageSent == False:
+            lightModule.triggerMessageSent = True
+            data.messages += [b";MOTIONTRIGGERED"]#inform the base station that the light is off due to motion trigger
+        elif lightModule.lightTriggeredOff == "TIMER" and lightModule.triggerMessageSent == False:
+            lightModule.triggerMessageSent = True
+            data.messages += [b";TIMERTRIGGERED"]#inform the base station that the light is off due to timer finishing
+        ################
+        ################
+        #NOW must make it wait for confirmation that the triggered message has been received, and then set lightModule.TriggeredOff = "NO"
+        #################
+        #################
+
+
+        #receiving data
         if mask & selectors.EVENT_READ:
-            recv_data = sock.recv(1024)  # Should be ready to read
-            if recv_data:
-                print("received", repr(recv_data), "from connection", data.connid)
-                #data.recv_total += len(recv_data)
-                
-                #if the piui requests the light changes state
-                if (recv_data == b"CHANGE STATE"):
-                    #turn the light on or off
-                    lightModule.changeWifiState()
+            try: 
+                #split the incoming messages based on the semicolon delimeter and put them into a list
+                recv_data_list = sock.recv(1024).split(b";")  # Should be ready to read
+            except:
+                recv_data_list = False #if read failed then it is disconnect from base station
+            if recv_data_list:
+                for recv_data in recv_data_list:#for each incoming message separated by a ";"
+                    print("received", repr(recv_data), "from connection", data.connid)
+                    #data.recv_total += len(recv_data)
+                    
+                    #if the piui requests the light changes state
+                    if (recv_data == b"CHANGE STATE"):
+                        #turn the light on or off
+                        lightModule.changeWifiState()
 
-                '''THIS IS OLD AND NO LONGER NEEDED, we must now only change wifiState and then only confirm the light is on when it has actually been turned on
-                #ACTUALLY NEVERMIND SOMETHING LIKE THIS IS GOOD TO HAVE AS SOON AS THE STATE IS CHANGED...
-                if lightModule.wifiState == "OFF":
-                    data.messages += [b"TURNED OFF"]
-                else:
-                    data.messages += [b"TURNED ON"]
-                '''
-                #if the piui requests to confirm whether the light has changed state
-                if (recv_data == b"CONFIRM STATE"):
-                    stateConfirmation = lightModule.confirmState()
-                    if stateConfirmation[0] == False:#if the light has not yet changed state
-                        if stateConfirmation[1] == "ON":
-                            data.messages += [b"STATENOTCHANGED_ON"]
-                        else:
-                            data.messages += [b"STATENOTCHANGED_OFF"]
-                    else:#if the light has successfully changed state
-                        if stateConfirmation[1] == "ON":
-                            data.messages += [b"STATECHANGED_ON"]
-                        else:
-                            data.messages += [b"STATECHANGED_OFF"]
-                #if the piui asks what state the light is currently in
-                if (recv_data == b"GET STATE"):
-                    if lightModule.actualState == "ON":#if the light is send a message to the piui saying such, and vice versa
-                        data.messages += [b"STATEIS_ON"]
-                    elif lightModule.actualState == "OFF":
-                        data.messages += [b"STATEIS_OFF"]
-                #the piui tells the light module that it has successfully connected wifi
-                if (recv_data == b"CONNECTED"):
-                    lightModule.connect()
+                        ################
+                        ################
+                        #NEED TO MAKE IT REFUSE TO CHANGE STATE IF THE LIGHTMODULE.MOTIONHAPPENING == True
+                        #################
+                        #################
 
-                #piui name change commands#ADD IN FOR GET NAME COMMAND DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
-                if (isinstance(recv_data, bytes) and len(recv_data)>7 and recv_data[0:7] == b"CHANGEN"):#full command is CHANGENAME_newName
-                    lightModule.changeWifiName(recv_data[11:].decode('utf-8'))#set the name of the light to the name in the wifi message
-                if (recv_data==b'CONFIRMNAMECHANGE'):#full command is CONFIRMCHANGENAME
-                    if lightModule.confirmNameChange(recv_data[17:]) == False:#check whether the light name has been changed
-                        data.messages += [b"NAMENOTCHANGED"]#confirm that the name has not been changed with the response NAMENOTCHANGED
+                    '''THIS IS OLD AND NO LONGER NEEDED, we must now only change wifiState and then only confirm the light is on when it has actually been turned on
+                    #ACTUALLY NEVERMIND SOMETHING LIKE THIS IS GOOD TO HAVE AS SOON AS THE STATE IS CHANGED...
+                    if lightModule.wifiState == "OFF":
+                        data.messages += [b"TURNED OFF"]
                     else:
-                        data.messages += [b"NAMECHANGED_"+bytes(lightModule.actualName,'utf-8')]#confirm that the name has been changed woth the response NAMECHANGED_newName
-                #if the piui asks what name the light currently has
-                if (recv_data == b"GETNAME"):
-                    data.messages += [b"NAMEIS_"+bytes(lightModule.actualName,'utf-8')]
+                        data.messages += [b"TURNED ON"]
+                    '''
+                    #if the piui requests to confirm whether the light has changed state
+                    if (recv_data == b"CONFIRM STATE"):
+                        stateConfirmation = lightModule.confirmState()
+                        if stateConfirmation[0] == False:#if the light has not yet changed state
+                            if stateConfirmation[1] == "ON":
+                                data.messages += [b";STATENOTCHANGED_ON"]
+                            else:
+                                data.messages += [b";STATENOTCHANGED_OFF"]
+                        else:#if the light has successfully changed state
+                            if stateConfirmation[1] == "ON":
+                                data.messages += [b";STATECHANGED_ON"]
+                            else:
+                                data.messages += [b";STATECHANGED_OFF"]
+                    #if the piui asks what state the light is currently in
+                    if (recv_data == b"GET STATE"):
+                        if lightModule.actualState == "ON":#if the light is send a message to the piui saying such, and vice versa
+                            data.messages += [b";STATEIS_ON"]
+                        elif lightModule.actualState == "OFF":
+                            data.messages += [b";STATEIS_OFF"]
+                    #the piui tells the light module that it has successfully connected wifi
+                    if (recv_data == b"CONNECTED"):
+                        lightModule.connect()
+
+                    #piui name change commands#ADD IN FOR GET NAME COMMAND DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
+                    if (isinstance(recv_data, bytes) and len(recv_data)>7 and recv_data[0:7] == b"CHANGEN"):#full command is CHANGENAME_newName
+                        lightModule.changeWifiName(recv_data[11:].decode('utf-8'))#set the name of the light to the name in the wifi message
+                    if (recv_data==b'CONFIRMNAMECHANGE'):#full command is CONFIRMCHANGENAME
+                        if lightModule.confirmNameChange(recv_data[17:]) == False:#check whether the light name has been changed
+                            data.messages += [b";NAMENOTCHANGED"]#confirm that the name has not been changed with the response NAMENOTCHANGED
+                        else:
+                            data.messages += [b";NAMECHANGED_"+bytes(lightModule.actualName,'utf-8')]#confirm that the name has been changed woth the response NAMECHANGED_newName
+                    #if the piui asks what name the light currently has
+                    if (recv_data == b"GETNAME"):
+                        data.messages += [b";NAMEIS_"+bytes(lightModule.actualName,'utf-8')]
             
-            if not recv_data: #or data.recv_total == data.msg_total: #if it gets disconnected from the base station
+            if not recv_data_list: #or data.recv_total == data.msg_total: #if it gets disconnected from the base station
                 print("closing socket", data.connid)
                 self.sel.unregister(sock)
                 sock.close()
@@ -262,8 +301,8 @@ class wifiCommunicator():
         - None if there are no light modules initialized
         - State if there is a light module, a list with the following elements in order: 
             -"CONNECTED"/"NOTYETCONNECTED"/"DISCONNECTED"
-            -"ON"/"OFF"
-            -nameOfLight
+            -"ON"/"OFF" (None if not yet changed by piui)
+            -nameOfLight (None if not yet changed by piui)
             -resetTimer: a boolean variable that is True for one checkwifi cycle after the resetTimer button on the piui is pressed, False otherwise
         where nameOfLight is the name which the wifi is requesting that the lightModuleBeNamed
 
@@ -312,6 +351,13 @@ class wifiCommunicator():
                 lightModule.changeActualState("ON")
             elif stateInput == "OFF":
                 lightModule.changeActualState("OFF")
+                if context == "IDLE":
+                    lightModule.lightTriggeredOff = "NO"#the light is no longer being triggered to be off
+                    lightModule.motionHappening = False #motion sensor is not being triggered anymore
+                elif context == "MOTION":
+                    lightModule.triggerLightOff(self, "MOTION")
+                elif context == "TIMER":
+                    lightModule.triggerLightOff(self,"TIMER")
             lightModule.changeActualName(nameInput)#set the light module's actual name to match what the main loop program is saying            
 
     def checkWifi(self):
