@@ -61,6 +61,8 @@ class lightModuleClient:
         #the above variable should go back to "NO" as soon as the message has been sent to the base station that the light is triggered off
         self.motionHappening = False #whether there is motion currently
         self.triggerMessageSent = False #whether a message has been sent to the base station to inform it that the light module ahs been triggered off
+        self.lightTriggerConfirmationTime = 0#the last time at which we asked the base station whether it has understood that the light has been triggered off
+        self.resetTimerRequested = False #this is True if the wifi has requested that the timer be reset, and will be changed to False again once the getState function has been called
 
         self.connid = connid #the ID number of the light
         
@@ -183,19 +185,27 @@ class wifiCommunicator():
         data = key.data
         lightModule = self.lightModuleDict[data.connid]
         
-        #if the light status changes we must inform the base station, as long as we have not already sent this trigger message
+        #if we have already sent a message telling the base station that the light has been triggered off
+        #but we haven't yet received confirmation that the base station knows the light has been triggered off for the past second, then reattempt to tell it this
+        if lightModule.lightTriggeredOff == "MOTION" and lightModule.triggerMessageSent == True and time.time() - lightModule.lightTriggerConfirmationTime > 1:
+            data.messages += [b";MOTIONTRIGGERED"]
+            lightModule.lightTriggerConfirmationTime = time.time()#record the time we told the base station the light turned off
+        elif lightModule.lightTriggeredOff == "TIMER" and lightModule.triggerMessageSent == True and time.time() - lightModule.lightTriggerConfirmationTime > 1:
+            data.messages += [b";TIMERTRIGGERED"]
+            lightModule.lightTriggerConfirmationTime = time.time()#record the time we told the base station the light turned off
+        
+        #if the light has been triggered off by the timer or the motion sensor, we inform the base station
         if lightModule.lightTriggeredOff == "MOTION" and lightModule.triggerMessageSent == False:
-            lightModule.triggerMessageSent = True
+            lightModule.triggerMessageSent = True#this triggerMessageSent variable signifies we have attempted to tell the base station 
             data.messages += [b";MOTIONTRIGGERED"]#inform the base station that the light is off due to motion trigger
+            lightModule.lightTriggerConfirmationTime = time.time()#record the time we told the base station the light turned off
         elif lightModule.lightTriggeredOff == "TIMER" and lightModule.triggerMessageSent == False:
             lightModule.triggerMessageSent = True
             data.messages += [b";TIMERTRIGGERED"]#inform the base station that the light is off due to timer finishing
-        ################
-        ################
-        #NOW must make it wait for confirmation that the triggered message has been received, and then set lightModule.TriggeredOff = "NO"
-        #################
-        #################
+            lightModule.lightTriggerConfirmationTime = time.time()#record the time we told the base station the light turned off
 
+
+#NOW must make it wait for confirmation the piui knows the light has turned off, and then set lightModule.TriggeredOff = "NO"
 
         #receiving data
         if mask & selectors.EVENT_READ:
@@ -203,22 +213,30 @@ class wifiCommunicator():
                 #split the incoming messages based on the semicolon delimeter and put them into a list
                 recv_data_list = sock.recv(1024).split(b";")  # Should be ready to read
             except:
-                recv_data_list = False #if read failed then it is disconnect from base station
+                recv_data_list = False #if read failed then it is disconnected from base station
             if recv_data_list:
                 for recv_data in recv_data_list:#for each incoming message separated by a ";"
                     print("received", repr(recv_data), "from connection", data.connid)
                     #data.recv_total += len(recv_data)
                     
+                    #if the base station receives confirmation that the base station knows the light has been triggered off
+                    #reset all the relevant trigger variables (except for lightModule.motionHappening, which might still be True) so that
+                    #the pi0 stops telling the base station the light has been triggered off
+                    if (recv_data == b"TRIGGEROFFCONFIRMED"):
+                        lightModule.triggerMessageSent = False
+                        lightModule.lightTriggeredOff = "NO"
+                        #note that there is an extremely slim chance that this TRIGGEREDOFFCONFIRMED is actually from a previous off cycle of the light,
+                        #but this is not that important right now since the pi0 will still call the above triggered message at least once for this base station cycle
+
                     #if the piui requests the light changes state
                     if (recv_data == b"CHANGE STATE"):
-                        #turn the light on or off
-                        lightModule.changeWifiState()
-
-                        ################
-                        ################
-                        #NEED TO MAKE IT REFUSE TO CHANGE STATE IF THE LIGHTMODULE.MOTIONHAPPENING == True
-                        #################
-                        #################
+                        if lightModule.motionHappening == True:
+                            #if there is motion currently being detected, then don't turn the light on and inform the base station (Note that
+                            # we will not confirm that the base station received this because the base station should already know the light is off)
+                            data.messages += [b";MOTIONTRIGGERED"]
+                        else:
+                            #otherwise turn the light on or off
+                            lightModule.changeWifiState()
 
                     '''THIS IS OLD AND NO LONGER NEEDED, we must now only change wifiState and then only confirm the light is on when it has actually been turned on
                     #ACTUALLY NEVERMIND SOMETHING LIKE THIS IS GOOD TO HAVE AS SOON AS THE STATE IS CHANGED...
@@ -232,9 +250,9 @@ class wifiCommunicator():
                         stateConfirmation = lightModule.confirmState()
                         if stateConfirmation[0] == False:#if the light has not yet changed state
                             if stateConfirmation[1] == "ON":
-                                data.messages += [b";STATENOTCHANGED_ON"]
+                                data.messages += [b";STATENOTCHANGED_ON"]#if the light is on
                             else:
-                                data.messages += [b";STATENOTCHANGED_OFF"]
+                                data.messages += [b";STATENOTCHANGED_OFF"]#if the light is off
                         else:#if the light has successfully changed state
                             if stateConfirmation[1] == "ON":
                                 data.messages += [b";STATECHANGED_ON"]
@@ -242,7 +260,10 @@ class wifiCommunicator():
                                 data.messages += [b";STATECHANGED_OFF"]
                     #if the piui asks what state the light is currently in
                     if (recv_data == b"GET STATE"):
-                        if lightModule.actualState == "ON":#if the light is send a message to the piui saying such, and vice versa
+                        if lightModule.motionHappening == True:
+                            #if there is motion currently being detected, then inform the base station
+                            data.messages += [b";MOTIONTRIGGERED"]
+                        elif lightModule.actualState == "ON":#if the light is send a message to the piui saying such, and vice versa
                             data.messages += [b";STATEIS_ON"]
                         elif lightModule.actualState == "OFF":
                             data.messages += [b";STATEIS_OFF"]
@@ -261,7 +282,10 @@ class wifiCommunicator():
                     #if the piui asks what name the light currently has
                     if (recv_data == b"GETNAME"):
                         data.messages += [b";NAMEIS_"+bytes(lightModule.actualName,'utf-8')]
-            
+
+                    if (recv_data == b"RESETTIMER"):
+                        lightModule.resetTimerRequested = True
+
             if not recv_data_list: #or data.recv_total == data.msg_total: #if it gets disconnected from the base station
                 print("closing socket", data.connid)
                 self.sel.unregister(sock)
@@ -325,8 +349,11 @@ class wifiCommunicator():
         if 1 not in self.lightModuleDict:
             return None
         lightModule = self.lightModuleDict[1]
-        return [lightModule.connectionStatus, lightModule.wifiState, lightModule.wifiName, False]
-
+        if lightModule.resetTimerRequested == False:
+            return [lightModule.connectionStatus, lightModule.wifiState, lightModule.wifiName, False]
+        else:
+            lightModule.resetTimerRequested = False
+            return [lightModule.connectionStatus, lightModule.wifiState, lightModule.wifiName, True]
     
     '''
     Tells the wifiCommunicator class about the actual state of the light
@@ -349,15 +376,17 @@ class wifiCommunicator():
             lightModule = self.lightModuleDict[1]
             if stateInput == "ON":#set the light module's actual state to match what the main loop program on the pi0 is saying
                 lightModule.changeActualState("ON")
+                lightModule.lightTriggeredOff = "NO"#the light is no longer being triggered to be off
+                lightModule.motionHappening = False #motion sensor is not being triggered anymore
             elif stateInput == "OFF":
                 lightModule.changeActualState("OFF")
                 if context == "IDLE":
                     lightModule.lightTriggeredOff = "NO"#the light is no longer being triggered to be off
                     lightModule.motionHappening = False #motion sensor is not being triggered anymore
                 elif context == "MOTION":
-                    lightModule.triggerLightOff(self, "MOTION")
+                    lightModule.triggerLightOff("MOTION")#the light has been triggered to turn off by the motion sensor
                 elif context == "TIMER":
-                    lightModule.triggerLightOff(self,"TIMER")
+                    lightModule.triggerLightOff("TIMER")#the light has been triggered to turn off by the timer
             lightModule.changeActualName(nameInput)#set the light module's actual name to match what the main loop program is saying            
 
     def checkWifi(self):

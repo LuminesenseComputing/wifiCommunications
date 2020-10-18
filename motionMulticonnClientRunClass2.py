@@ -4,7 +4,7 @@ import sys
 import time
 
 #use this command to run program:
-#python C:/Users/chris/Documents/programming/github/uv/wifiCommunications/multiconnClientRunClass2.py
+#python C:/Users/chris/Documents/programming/github/uv/wifiCommunications/motionMulticonnClientRunClass2.py
 
 
 
@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     timerTestAlreadyDone = False
     motionTime = 10
-    motionEndTime = 40
+    motionEndTime = 30
 
     while True:
         wifiComm.checkWifi()#check wifi signals
@@ -54,18 +54,16 @@ if __name__ == '__main__':
 
 
         currentTime = time.time()
-        '''
+
         if currentTime - startTime > motionTime  and timerTestAlreadyDone == False:
             currentActualState = "OFF"
             context = "MOTION"
             timerTestAlreadyDone = True
             wifiComm.confirmState(currentActualState, currentActualName, None, context)# parameter format: "ON"/"OFF", nameOfLight (string), currentTime, context ("IDLE"/"MOTION"/"TIMER"/"ON")
-        el
-        '''
-        if currentActualState == "ON": # and (currentTime-startTime < motionTime or currentTime - startTime > motionEndTime):
+        elif currentActualState == "ON" and (currentTime-startTime < motionTime or currentTime - startTime > motionEndTime):
             context = "ON"
             wifiComm.confirmState(currentActualState, currentActualName, None, context)# parameter format: "ON"/"OFF", nameOfLight (string), currentTime, context ("IDLE"/"MOTION"/"TIMER"/"ON")
-        elif currentActualState == "OFF": # and (currentTime-startTime < motionTime or currentTime - startTime > motionEndTime):
+        elif currentActualState == "OFF" and (currentTime-startTime < motionTime or currentTime - startTime > motionEndTime):
             context = "IDLE"
             wifiComm.confirmState(currentActualState, currentActualName, None, context)# parameter format: "ON"/"OFF", nameOfLight (string), currentTime, context ("IDLE"/"MOTION"/"TIMER"/"ON")
         #print(wifiState)
