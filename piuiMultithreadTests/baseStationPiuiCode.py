@@ -24,7 +24,7 @@ class lightModulePiUiInfo:
     def __init__(self, port):
         self.port = port
         self.displayTime = 0
-        self.state = "UNKNOWN" #can be ON, OFF, TURNING_ON, TURNING_OFF, UNKNOWN if using the toggle system; can be ON, OFF, CHANGING_STATE, UNKNOWN if using the button light control system
+        self.state = "UNKNOWN" #can be ON, OFF, TURNING_ON, TURNING_OFF, or  UNKNOWN if using the toggle system; can be ON, OFF, CHANGING_STATE, "OFF - MOTION", "OFF - TIMER DONE", or UNKNOWN if using the button light control system
         self.name = "UNKNOWN" #an example of a light name
 
 class DemoPiUi(object):
@@ -85,11 +85,11 @@ class DemoPiUi(object):
         self.titles = {} # A dictionary that stores the textboxes on the page
         self.nameInputs = {}
         for port in self.piuiLightDict:
-            self.titles[port] = self.page.add_textbox("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+" Status: " + self.piuiLightDict[port].state, "h2")
+            self.titles[port] = self.page.add_textbox("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+"\nStatus: " + self.piuiLightDict[port].state, "h2")
             self.nameInputs[port] = self.page.add_input("text", "Change Nickname")
-            self.page.add_button("Save Nickname", functools.partial(self.onLightNameType, port))  
+            self.page.add_button("Save Nickname", functools.partial(self.onLightNameType, port))
             self.page.add_button("Change State", functools.partial(self.onLightControlClick, port))
-
+            self.page.add_button("Reset Time", functools.partial(self.onTimerResetClick, port))
         while True:
             incomingSignal = self.lightReceiveEvent()
             if incomingSignal is not None:#if there is a message coming from the wifi, process it
@@ -103,10 +103,11 @@ class DemoPiUi(object):
             self.lightCommandEvent(str(port)+":"+"GETSTATE_COMMAND")#get the current state of the light the just connected
             self.lightCommandEvent(str(port)+":"+"GETNAME")#get the current state of the light the just connected
             if self.currentPage == "page_lightController":
-                self.titles[port] = self.page.add_textbox("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+" Status: " + self.piuiLightDict[port].state, "h2")
+                self.titles[port] = self.page.add_textbox("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+"\nStatus: " + self.piuiLightDict[port].state, "h2")
                 self.nameInputs[port] = self.page.add_input("text", "Change Nickname")
-                self.page.add_button("Save Nickname", functools.partial(self.onLightNameType, port)) 
+                self.page.add_button("Save Nickname", functools.partial(self.onLightNameType, port))
                 self.page.add_button("Change State", functools.partial(self.onLightControlClick, port))
+                self.page.add_button("Reset Time", functools.partial(self.onTimerResetClick, port))
         elif signal == "ON" or signal=="CON_ON":
             self.piuiLightDict[port].state = "ON"
             if self.currentPage == "page_lightController":
@@ -135,6 +136,15 @@ class DemoPiUi(object):
             self.piuiLightDict[port].name = signal[12:]
             if self.currentPage == "page_lightController":
                 self.changeLightText(port)
+        elif signal == "MOTIONTRIGGERED":#the motion sensors have been triggered, turning the light off
+            self.piuiLightDict[port].state = "OFF - MOTION"
+            if self.currentPage == "page_lightController":
+                self.changeLightText(port)
+        elif signal == "TIMERTRIGGERED":#the timer has run out, turning the light off
+           self.piuiLightDict[port].state = "OFF - TIMER DONE"
+           if self.currentPage == "page_lightController":
+               self.changeLightText(port)
+
 
     '''
     def page_console(self):
@@ -199,9 +209,13 @@ class DemoPiUi(object):
         self.lightCommandEvent(str(port)+":"+value)
         self.changeLightText(port)
 
+    def onTimerResetClick(self, port):
+        value = "RESETTIMER"
+        self.lightCommandEvent(str(port) + ":" + value)
+
     def changeLightText(self, port):
         #index = self.indices[str(port)]
-        self.titles[port].set_text("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+" Status: " + self.piuiLightDict[port].state)
+        self.titles[port].set_text("Light name: "+ self.piuiLightDict[port].name+"\nPort: " +str(port)+"\nStatus: " + self.piuiLightDict[port].state)
 
 #AN EXAMPLE OF A POTENTIAL FUNCTION THAT COULD BE USED FOR
 #SENDING WIFI MESSAGES FROM PIUI################

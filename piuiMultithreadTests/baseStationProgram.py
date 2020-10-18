@@ -119,6 +119,8 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
         lightModule.nameChanging = True
     elif piuiRequest == "GETNAME" and messagePort == int(port):#if the queue is asking what the current light module's name is
         data.messages += [b";GETNAME"]
+    elif piuiRequest == "RESETTIMER" and messagePort == int(port):#if asking to reset the light's timer
+        data.messages += [b";RESETTIMER"]
 
     #check if any messages have been received from the light module
     if mask & selectors.EVENT_READ:
@@ -146,6 +148,20 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
                     lightModule.finalizeChangeState()
                     receiveQueuey.put(str(port) + ":" + "CON_OFF")
                 '''
+
+                #If the pi0 has sent the TIMERTRIGGERED or CONFIRMTIMERTRIGGERED command, signalling that the light is off due to the timer running out...
+                if recv_data == b"TIMERTRIGGERED":
+                    print("    Light "+ str(port) + " timer has triggered.")
+                    lightModule.outOfSyncStateChange("OFF")#the light module has been forced into the off state
+                    receiveQueuey.put(str(port) + ":" + "TIMERTRIGGERED")#send message to the piui
+                    data.messages += [b";TRIGGEROFFCONFIRMED"]#confirm to the pi0 that the base station knows the light has been triggered off
+
+                #If the pi0 has sent the MOTIONTRIGGERED or CONFIRMMOTIONTRIGGERED command, signalling that the light is off and cannot turn on due to the motion sensor...
+                if recv_data == b"MOTIONTRIGGERED":
+                    print("    Light "+ str(port) + " motion has triggered.")
+                    lightModule.outOfSyncStateChange("OFF")#the light module has been forced into the off state, whether it was currently on, off, or attempting to change state
+                    receiveQueuey.put(str(port) + ":" + "MOTIONTRIGGERED")#send message to the piui
+                    data.messages += [b";TRIGGEROFFCONFIRMED"]#confirm to the pi0 that the base station knows the light has been triggered off
 
                 #if the pi0 responds to the CHANGE STATE command and CONFIRM STATE command
                 if recv_data == b"STATECHANGED_ON":
