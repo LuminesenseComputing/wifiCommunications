@@ -44,6 +44,7 @@ if __name__ == '__main__':
         #print(wifiComm.getState())
         wifiState = wifiComm.getState() #format [connectionStatus ("CONNECTED"/"NOTYETCONNECTED"/"DISCONNECTED"), wifiState ("ON"/"OFF"), wifiName (string), resetTime (bool)]
         #if the wif-commanded state or name has changed, then simulate changing the actual name and state of the light
+        '''
         if wifiState[2] is not None:
             currentActualName = wifiState[2]
         if wifiState[1] is not None:
@@ -51,8 +52,19 @@ if __name__ == '__main__':
 
         if wifiState[3] == True:
             print("TIMER RESET REQUESTED")
+        '''
+        if wifiState[0] == "CONNECTED":
+            currentActualName = wifiState[2]
+        if wifiState[0] == "CONNECTED":
+            currentActualState = wifiState[1]
 
+        if wifiState[0] == "DISCONNECTED":
+            currentActualState = "OFF" #turn light off if it has disconnected from the base station...
 
+        #Check for timer reset request
+        if wifiState[0] == "CONNECTED" and wifiState[3] == True:
+            print("TIMER RESET REQUESTED")
+        
         currentTime = time.time()
         '''
         if currentTime - startTime > motionTime  and timerTestAlreadyDone == False:

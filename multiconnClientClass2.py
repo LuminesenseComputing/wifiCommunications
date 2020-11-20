@@ -11,6 +11,9 @@ import copy
 #chris made change
 #chris made change2
 '''
+
+THE BELOW ASSUMPTIONS ARE NOW WRONG. I WILL UPDATE THEM.
+
 ASSUMPTIONS
 -DONE: the wifiCommunicator will only be initialized once for each power on of the pi0. Thus, the lightModuleClients should
 continue to be stored even if the light gets disconnected from the base station and reconnected, although the corresponding
@@ -54,8 +57,10 @@ python C:/Users/chris/Documents/programming/github/uv/ServerTests/multiconnClien
 
 class lightModuleClient:
     def __init__(self, connid, actualState, actualName, actualCurrentTime):
-        self.wifiState = None #"OFF" is off, "ON" is on, None is disconnected from base station
+        self.wifiState = actualState #"OFF" is off, "ON" is on,# None is disconnected from base station (no longer using none state)
+        #the above used to = None, but has been changed to start as the same as the actualState
         self.actualState = actualState #the actual current state of the light, "OFF" or "ON"
+        
         self.connectionStatus = "NOTYETCONNECTED" #whether connected to base station; can be "NOTYETCONNECTED", "CONNECTED", or "DISCONNECTED"
         self.lightTriggeredOff = "NO"#whether the light has been triggered to turn off, either: "NO", "MOTION" (motion sensor triggered), or "TIMER" (timer ran out)
         #the above variable should go back to "NO" as soon as the message has been sent to the base station that the light is triggered off
@@ -66,38 +71,48 @@ class lightModuleClient:
 
         self.connid = connid #the ID number of the light
         
-        self.wifiName = None #the name of the light module as recommended by the wifi; None if the wifi is disconnected or has not yet tried to change the name
+        self.wifiName = actualName #the name of the light module as recommended by the wifi; None if the wifi is disconnected or has not yet tried to change the name
+        #the above used to = None, but has been changed to start as the same as the actualName
         self.actualName = actualName #the current actual currently stored name of the light module
+        
         self.actualCurrentTime = actualCurrentTime #the time the light has been on for
 
         self.lastConnectionAttemptTime = 0#The time of the last attempt to connect to the base station
 
-        print("    Light ", self.connid, " is NOT YET CONNECTED.")
+        print("        Light ", self.connid, " is NOT YET CONNECTED.")
 
     #the light gets triggered to be off with cause as either "MOTION" or "TIMER"
     def triggerLightOff(self, cause):
         if cause == "MOTION":
             self.lightTriggeredOff = "MOTION"
             self.motionHappening = True
-            print("    Light ", self.connid, " off due to motion sensor.")
+            print("        Light ", self.connid, " off due to motion sensor.")
         elif cause == "TIMER":
             self.lightTriggeredOff = "TIMER"
-            print("    Light ", self.connid, " off due to timer running out.")
+            print("        Light ", self.connid, " off due to timer running out.")
+        self.wifiState = "OFF" #assume that the wifi wants the light to be off once the trigger occurs
         self.triggerMessageSent = False #we have not yet informed the base station that the trigger has occurred
 
     def connect(self):#light becoming connected to a base station
         self.connectionStatus = "CONNECTED"
-        self.wifiState = self.actualState #start wifiState to be the same as the current actualState
-        print("    Light ", self.connid, " is now CONNECTED.")
+        '''
+        if self.wifiState == None: #if this is the first time the light is connecting, wifiState is still None
+            self.wifiState = self.actualState #start wifiState to be the same as the current actualState
+        if self.wifiName == None:#similar to line above, but with name
+            self.wifiName = self.actualName
+        '''
+        #else if the light is being reconnected then wifiState will just be what the wifiState was before disconnection
+        print("        Light ", self.connid, " is now CONNECTED.")
 
     def disconnect(self):#light becoming disconnected from a base station
         self.connectionStatus = "DISCONNECTED"
-        self.wifiState = None
-        print("    Light ", self.connid, " is currently DISCONNECTED.")
+        #self.wifiState = None 
+        #the line above is commented out because we now remember the previous state from before disconnection and remember that for after reconnection
+        print("        Light ", self.connid, " is currently DISCONNECTED.")
 
     def changeWifiName(self, newName):#change of name has been requested
         self.wifiName = newName
-        print("    Light ", self.connid, " is now WIFI NAMED ", newName)
+        print("        Light ", self.connid, " is now WIFI NAMED ", newName)
 
     def changeActualName(self, newName):#the actual name of the light has been changed
         self.actualName = newName
@@ -110,10 +125,10 @@ class lightModuleClient:
     def changeWifiState(self):#change the wifi recommended state of the light
         if self.wifiState == "OFF":
             self.wifiState = "ON"
-            print("    Light ", self.connid, " is now WIFI ON.")
+            print("        Light ", self.connid, " is now WIFI ON.")
         else:
             self.wifiState = "OFF"
-            print("    Light ", self.connid, " is now WIFI OFF.")
+            print("        Light ", self.connid, " is now WIFI OFF.")
 
     def changeActualState(self, state):#change the actual state of the light
         self.actualState = state
@@ -122,7 +137,7 @@ class lightModuleClient:
     #returns [True/False for whether it is confirmed, self.actualState]
     def confirmState(self):#if the server is making sure that the light is on, ensure the light is on
         if self.wifiState == self.actualState:
-            print("    Light ", self.connid, " is now CONFIRMED ", self.actualState)
+            print("        Light ", self.connid, " is now CONFIRMED ", self.actualState)
             return [True, self.actualState]
         return [False, self.actualState]
 
@@ -146,7 +161,7 @@ class wifiCommunicator():
         server_addr = (self.host, self.port)
         for i in range(0, self.num_conns):
             connid = i + 1
-            print("attempting connection", connid, "to", server_addr)
+            print("    attempting connection", connid, "to", server_addr)
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setblocking(False)
             sock.connect_ex(server_addr)
@@ -165,7 +180,7 @@ class wifiCommunicator():
     #reattempt to connect to a light module if it was not able to connect to base station (the old socket must first be unregistered)
     def attemptReconnection(self,connid):
         server_addr = (self.host, self.port)
-        print("reattempting connection", connid, "to", server_addr)
+        print("    reattempting connection", connid, "to", server_addr)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
         sock.connect_ex(server_addr)
@@ -214,9 +229,12 @@ class wifiCommunicator():
                 recv_data_list = sock.recv(1024).split(b";")  # Should be ready to read
             except:
                 recv_data_list = False #if read failed then it is disconnected from base station
+            if len(recv_data_list) == 1:# if it's only [b''] then the base station has disconnected
+                recv_data_list = False
+            
             if recv_data_list:
                 for recv_data in recv_data_list:#for each incoming message separated by a ";"
-                    print("received", repr(recv_data), "from connection", data.connid)
+                    print("    received", repr(recv_data), "from connection", data.connid)
                     #data.recv_total += len(recv_data)
                     
                     #if the base station receives confirmation that the base station knows the light has been triggered off
@@ -230,7 +248,9 @@ class wifiCommunicator():
 
                     #if the piui requests the light changes state
                     if (recv_data == b"CHANGE STATE"):
-                        if lightModule.motionHappening == True:
+                        if lightModule.lightTriggeredOff == "TIMER":
+                            pass#the user cannot change the light state if this is the exact moment the timer has triggered to be off, and the wifi is currently processing the timer trigger
+                        elif lightModule.motionHappening == True:
                             #if there is motion currently being detected, then don't turn the light on and inform the base station (Note that
                             # we will not confirm that the base station received this because the base station should already know the light is off)
                             data.messages += [b";MOTIONTRIGGERED"]
@@ -287,7 +307,7 @@ class wifiCommunicator():
                         lightModule.resetTimerRequested = True
 
             if not recv_data_list: #or data.recv_total == data.msg_total: #if it gets disconnected from the base station
-                print("closing socket", data.connid)
+                print("    closing socket", data.connid)
                 self.sel.unregister(sock)
                 sock.close()
                 lightModule.disconnect()#properly disconnect the light module socket
@@ -300,17 +320,17 @@ class wifiCommunicator():
 
         #if the light is currently disconnected and the last attempt to connect was greater than 2 seconds ago...
         if (lightModule.connectionStatus == "NOTYETCONNECTED" or lightModule.connectionStatus == "DISCONNECTED") and time.time()-lightModule.lastConnectionAttemptTime > 2:
-            print("closing socket", data.connid)
+            print("    closing socket", data.connid)
             self.sel.unregister(sock)
             sock.close()
             lightModule.disconnect()#properly disconnect the light module socket
             self.attemptReconnection(data.connid)
 
-        if mask & selectors.EVENT_WRITE:
+        if mask & selectors.EVENT_WRITE and lightModule.connectionStatus == "CONNECTED":
             if not data.outb and data.messages:
                 data.outb = data.messages.pop(0)
             if data.outb:
-                print("sending", repr(data.outb), "to connection", data.connid)
+                print("    sending", repr(data.outb), "to connection", data.connid)
                 sent = sock.send(data.outb)  # Should be ready to write
                 data.outb = data.outb[sent:]
     '''
@@ -325,8 +345,8 @@ class wifiCommunicator():
         - None if there are no light modules initialized
         - State if there is a light module, a list with the following elements in order: 
             -"CONNECTED"/"NOTYETCONNECTED"/"DISCONNECTED"
-            -"ON"/"OFF" (None if not yet changed by piui)
-            -nameOfLight (None if not yet changed by piui)
+            -"ON"/"OFF" (None if not yet changed by piui ##### actually no. Now it is always either on/off; at the beginning it matches what the light starts as)
+            -nameOfLight (None if not yet changed by piui #### actually no. Not it is always a string; at the beginning it matches what the light start as)
             -resetTimer: a boolean variable that is True for one checkwifi cycle after the resetTimer button on the piui is pressed, False otherwise
         where nameOfLight is the name which the wifi is requesting that the lightModuleBeNamed
 
@@ -383,7 +403,7 @@ class wifiCommunicator():
                 if context == "IDLE":
                     lightModule.lightTriggeredOff = "NO"#the light is no longer being triggered to be off
                     lightModule.motionHappening = False #motion sensor is not being triggered anymore
-                elif context == "MOTION":
+                elif context == "MOTION" and lightModule.motionHappening == False: #if the motion sensor starts being triggered and it wasn't already being triggered
                     lightModule.triggerLightOff("MOTION")#the light has been triggered to turn off by the motion sensor
                 elif context == "TIMER":
                     lightModule.triggerLightOff("TIMER")#the light has been triggered to turn off by the timer
@@ -399,4 +419,4 @@ class wifiCommunicator():
             if not self.sel.get_map():
                 return
         except KeyboardInterrupt:
-            print("caught keyboard interrupt, exiting")
+            print("    caught keyboard interrupt, exiting")
