@@ -95,7 +95,7 @@ def accept_wrapper(sock, lightModuleDict, receiveQueuey):
     conn, addr = sock.accept()  # Should be ready to read
     print("accepted connection from", addr)
     conn.setblocking(False)
-    data = types.SimpleNamespace(addr=addr, inb=b"", messages=[b"CONNECTED"], outb=b"")#send a message to the light to confirm it has been connected
+    data = types.SimpleNamespace(addr=addr, inb=b"", messages=[b";CONNECTED"], outb=b"")#send a message to the light to confirm it has been connected
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
     sel.register(conn, events, data=data)
     lightModuleDict[addr[1]] = lightModule(addr[1])
