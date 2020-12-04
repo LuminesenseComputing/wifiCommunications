@@ -229,7 +229,8 @@ class wifiCommunicator():
                 recv_data_list = sock.recv(1024).split(b";")  # Should be ready to read
             except:
                 recv_data_list = False #if read failed then it is disconnected from base station
-            if len(recv_data_list) == 1:# if it's only [b''] then the base station has disconnected
+
+            if recv_data_list==False or len(recv_data_list) == 1:# if it's False or only [b''] then the base station has disconnected
                 recv_data_list = False
             
             if recv_data_list:

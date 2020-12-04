@@ -129,7 +129,7 @@ def service_connection(key, mask, lightModuleDict, piuiRequest, receiveQueuey, m
             recv_data_list = sock.recv(1024).split(b";")  # Should be ready to read
         except:
             recv_data_list = False#if read failed then close light
-        if recv_data_list:#if the recv_data_list is not false; ie if the reading over incoming messages worked
+        if recv_data_list and len(recv_data_list)>1:#if the recv_data_list is not false and it is more than just [";"]; ie if the reading over incoming messages worked
             for recv_data in recv_data_list:#for each incoming message separated by ";"
                 print("received",repr(recv_data), "from", data.addr)
                #IT WOULD ACTUALLY STILL BE GOOD TO HAVE AN IMMEDIATE CHECK OF CONFIRM STATE RIGHT AFTER THE LIGHT HAS BEEN CHANGED
